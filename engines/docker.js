@@ -271,6 +271,10 @@ module.exports = {
                                         });
                                     });
 
+                                    containers[container_id].on("error", function(error) {
+                                        core.loggers["containership.scheduler"].log("warn", `Caught an error managing the forever-monitor process for ${container_id}: ${error}`);
+                                    });
+
                                     containers[container_id].start();
                                 }
                             });
@@ -467,6 +471,10 @@ var commands = {
                         core.loggers["containership.scheduler"].log("warn", err.message);
                     }
                 });
+            });
+
+            containers[options.id].on("error", function(error) {
+                core.loggers["containership.scheduler"].log("warn", `Caught an error managing the forever-monitor process for ${options.id}: ${error}`);
             });
 
             containers[options.id].start();
