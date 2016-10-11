@@ -272,7 +272,7 @@ module.exports = {
                                     });
 
                                     containers[container_id].on("error", function(error) {
-                                        core.loggers["containership.scheduler"].log("warn", `Caught an error managing the forever-monitor process for ${container_id}: ${error}`);
+                                        core.loggers["containership.scheduler"].log("warn", ["Caught an error managing the forever-monitor process for", container_id, ":", error].join(" "));
                                     });
 
                                     containers[container_id].start();
@@ -474,7 +474,7 @@ var commands = {
             });
 
             containers[options.id].on("error", function(error) {
-                core.loggers["containership.scheduler"].log("warn", `Caught an error managing the forever-monitor process for ${options.id}: ${error}`);
+                core.loggers["containership.scheduler"].log("warn", ["Caught an error managing the forever-monitor process for", options.id, ":", error].join(" "));
             });
 
             containers[options.id].start();
