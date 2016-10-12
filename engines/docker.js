@@ -256,8 +256,8 @@ module.exports = {
                                     });
 
                                     containers[container_id].on("error", function(error) {
-                                        core.loggers["containership.scheduler"].log("warn", ["Caught an error managing the forever-monitor process for", container_id, ":", error].join(" "));
-                                        set_unloaded(core, container_id, application_name);
+                                        self.core.loggers["containership.scheduler"].log("warn", ["Caught an error managing the forever-monitor process for", container_id, ":", error].join(" "));
+                                        set_unloaded(self.core, container_id, application_name);
                                     });
 
                                     containers[container_id].start();
