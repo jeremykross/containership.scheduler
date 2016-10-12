@@ -5,6 +5,20 @@ var forever = require("forever-monitor");
 var Docker = require("dockerode");
 var docker = new Docker({socketPath: "/var/run/docker.sock"});
 
+function set_unloaded(core, container_id, application_name) {
+    commands.update_container({
+        application_name: application_name,
+        container_id: container_id,
+        status: "unloaded",
+        core: core
+    }, function(err){
+        if(err){
+            self.core.loggers["containership.scheduler"].log("warn", ["Failed to unloaded", application_name, "container:", container_id].join(" "));
+            self.core.loggers["containership.scheduler"].log("warn", err.message);
+        }
+    });
+}
+
 module.exports = {
 
     initialize: function(core){
@@ -273,6 +287,7 @@ module.exports = {
 
                                     containers[container_id].on("error", function(error) {
                                         core.loggers["containership.scheduler"].log("warn", ["Caught an error managing the forever-monitor process for", container_id, ":", error].join(" "));
+                                        set_unloaded(core, container_id, application_name);
                                     });
 
                                     containers[container_id].start();
@@ -475,6 +490,7 @@ var commands = {
 
             containers[options.id].on("error", function(error) {
                 core.loggers["containership.scheduler"].log("warn", ["Caught an error managing the forever-monitor process for", options.id, ":", error].join(" "));
+                set_unloaded(core, options.id, options.application_name);
             });
 
             containers[options.id].start();
