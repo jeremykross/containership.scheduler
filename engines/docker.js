@@ -15,8 +15,8 @@ function set_unloaded(core, container_id, application_name, should_respawn) {
         start_time: null,
     }, should_respawn != undefined ? {respawn: should_respawn} : {}), function(err) {
         if(err){
-            self.core.loggers["containership.scheduler"].log("warn", ["Failed to unload", application_name, "container:", container_id].join(" "));
-            self.core.loggers["containership.scheduler"].log("warn", err.message);
+            core.loggers["containership.scheduler"].log("warn", ["Failed to unload", application_name, "container:", container_id].join(" "));
+            core.loggers["containership.scheduler"].log("warn", err.message);
         }
     });
 }
