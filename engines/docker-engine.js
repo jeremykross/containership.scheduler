@@ -17,7 +17,6 @@ class DockerEngine extends Engine {
     static universalOptionsToDocker(options) {
 
         //If no container_port is provided, default to host_port.
-        //attach to stdio
         options = _.defaults(options, {
             container_port: options.host_port
         });
@@ -352,50 +351,64 @@ class DockerEngine extends Engine {
                                 });
                               //There is a record,
                             } else {
-                                //but it's not being tracked
-                                if(!_.has(this.containers, containerId)) {
-                                    //Track it
-                                    this.trackContainer(container, containerId, applicationName);
-                                } 
-
-                                var hostPort, containerPort;
-
-                                if(info.HostConfig.NetworkMode === 'bridge'){
-                                    _.each(info.HostConfig.PortBindings, function(bindings, binding) {
-                                        hostPort = bindings[0].HostPort;
-                                        binding = binding.split('/')[0];
-                                        if(binding != hostPort) {
-                                            containerPort = binding;
-                                        }
-                                    });
-                                } else {
-                                    _.each(info.Config.Env, function(envVar){
-                                        if(envVar.indexOf('PORT=') == 0)
-                                            hostPort = envVar.split('=')[1];
-                                    });
-                                }
-
                                 containerConfig = JSON.parse(containerConfig);
-                                
-                                //Update the myriad state to match what's running.
-                                const newConfig = _.merge(containerConfig, {
-                                    application_name: applicationName,
-                                    container_id: containerId,
-                                    status: 'loaded',
-                                    host: attrs.id,
-                                    start_time: new Date(info.Created).valueOf(),
-                                    host_port: hostPort,
-                                    container_port: containerPort,
-                                    engine: 'docker'
-                                });
 
-                                this.log('info', `Reconciled running ${applicationName} container ${containerId}`);
+                                //it's not being tracked
+                                if(!_.has(this.containers, containerId)) {
+                                    //Check that the container belongs on this host.
+                                    if(containerConfig.host == attrs.id) {
+                                        //Track it
+                                        this.trackContainer(container, containerId, applicationName);
 
-                                Utils.updateContainerMyriadState(this.core, newConfig, (err) => {
-                                    if(err) {
-                                        this.log('error', `Error setting myriad state during reconcile for ${containerId}: ${err}`);
+                                        // and update the myriad state to reflect
+                                        // what's currently running.
+                                        var hostPort, containerPort;
+
+                                        if(info.HostConfig.NetworkMode === 'bridge'){
+                                            _.each(info.HostConfig.PortBindings, function(bindings, binding) {
+                                                hostPort = bindings[0].HostPort;
+                                                binding = binding.split('/')[0];
+                                                if(binding != hostPort) {
+                                                    containerPort = binding;
+                                                }
+                                            });
+                                        } else {
+                                            _.each(info.Config.Env, function(envVar){
+                                                if(envVar.indexOf('PORT=') == 0)
+                                                    hostPort = envVar.split('=')[1];
+                                            });
+                                        }
+
+                                        const newConfig = _.merge(containerConfig, {
+                                            application_name: applicationName,
+                                            container_id: containerId,
+                                            status: 'loaded',
+                                            host: attrs.id,
+                                            start_time: new Date(info.Created).valueOf(),
+                                            host_port: hostPort,
+                                            container_port: containerPort,
+                                            engine: 'docker'
+                                        });
+
+                                        this.log('info', `Reconciled running ${applicationName} container ${containerId}`);
+
+                                        Utils.updateContainerMyriadState(this.core, newConfig, (err) => {
+                                            if(err) {
+                                                this.log('error', `Error setting myriad state during reconcile for ${containerId}: ${err}`);
+                                            }
+                                        });
+                                    } else {
+                                        // It is not being tracked but belongs elsewhere anyway
+                                        // so stop the local instance
+                                        container.stop((err) => {
+                                            if(!err) {
+                                                this.log('info', `Stopped ${applicationName} on container ${containerId} because it's been moved to host ${containerConfig.host}`);
+                                            } else {
+                                                this.log('info', `Error stopping moved ${applicationName} on container ${containerId}.`);
+                                            }
+                                        });
                                     }
-                                });
+                                }
                             }
 
                         });
@@ -410,5 +423,3 @@ class DockerEngine extends Engine {
 }
 
 module.exports = DockerEngine;
-
-
