@@ -28,7 +28,7 @@ class DockerEngine extends Engine {
             'image':            (v) => ({'Image':v}),
             'privileged':       (v) => ({'HostConfig': {'Privileged': v}}),
             'network_mode':     (v) => ({'HostConfig': {'NetworkMode': v}}),
-            'application_name': (v) => ({'name': _.join([v, options.id], '-')}),
+            'application_name': (v) => ({'name': `${v}-${options.id}`}),
             'command':          (v) => !_.isEmpty(v) ? {'Cmd': _.split(v, ' ')} : {},
             'start_args':       (v) => flat.unflatten(v),
 
@@ -297,17 +297,11 @@ class DockerEngine extends Engine {
     }
 
     stop(options) {
-        Utils.deleteContainerMyriadState(this.core, {
-            applicationName: options.application,
-            container_id: options.container_id
-        }, (err) => {
-            if(err) {
-                this.log('warn', `Failed to delete ${options.application} container: ${options.container_id}`);
-                this.log('warn', err.message);
-            }
-
-            containers[options.container_id].stop();
-        });
+        if(_.has(this.containers, options.container_id)) {
+            this.containers[options.container_id].stop();
+        } else {
+            this.log("error", "Stopped an untracked container.");
+        }
     }
 
     reconcile() {
@@ -340,7 +334,6 @@ class DockerEngine extends Engine {
                             } else {
                                 this.log('error', `Error cleaning up dead ${applicationName} container: ${containerId}: ${err}`);
                             }
-
                         });
                       //There is a live container running on the host.
                     } else {
@@ -360,14 +353,14 @@ class DockerEngine extends Engine {
                               //There is a record,
                             } else {
                                 //but it's not being tracked
-                                if(_.has(this.containers, containerId)) {
+                                if(!_.has(this.containers, containerId)) {
                                     //Track it
                                     this.trackContainer(container, containerId, applicationName);
                                 } 
 
                                 var hostPort, containerPort;
 
-                                if(info.HostConfig.NetworkMode == 'bridge'){
+                                if(info.HostConfig.NetworkMode === 'bridge'){
                                     _.each(info.HostConfig.PortBindings, function(bindings, binding) {
                                         hostPort = bindings[0].HostPort;
                                         binding = binding.split('/')[0];
@@ -406,8 +399,10 @@ class DockerEngine extends Engine {
                             }
 
                         });
-                    } 
+                    }
                 });
+
+                return fn();
             });
         });
     }

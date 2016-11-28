@@ -4,8 +4,8 @@ const _ = require('lodash');
 
 class MethodNotImplementedError extends Error {
     constructor() {
-        super("This method was not implemented.");
-        this.name = "MethodNotImplementedError";
+        super('This method was not implemented.');
+        this.name = 'MethodNotImplementedError';
     }
 };
 
