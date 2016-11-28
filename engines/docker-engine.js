@@ -35,7 +35,6 @@ class DockerEngine extends Engine {
             'env_vars': (v) => ({
                 'Env': _.map(_.merge(v, {
                     PORT: options.container_port,
-                    PORT0: options.container_port
                 }), (v,k) => {
                     return _.join([k,v], '=');
                 })
@@ -119,7 +118,6 @@ class DockerEngine extends Engine {
                 this.log('warn', `Docker-Custodian failed to pull ${err}`);
             }
 
-
             const onFinished = (err, output) => {
                 if (err) {
                     this.log('warn', `Docker-Custodian failed to pull ${err}`);
@@ -153,7 +151,7 @@ class DockerEngine extends Engine {
             //For each auth, try to pull
             docker.pull(image, auth, (err, stream) => {
                 if(err) {
-                    if(index < _.size(auths)-1) {
+                    if(index < _.size(auths) - 1) {
                         // don't error because we need to continue checking the rest of the registries
                         return fn();
                     } else {
@@ -175,38 +173,36 @@ class DockerEngine extends Engine {
         });
     }
 
-    cleanupFnFor(container, id, applicationName, respawn) {
-        return () => {
-            delete this.containers[id];
+    cleanupContainer(container, id, applicationName, respawn) {
+        delete this.containers[id];
 
-            //Kill is probably extraneous at this point...
-            container.kill(() => {
-                container.remove((err) => {
-                    if(err) {
-                        this.log('error', `Error removing container ${id} on cleanup.`);
-                    } else {
-                        this.log('info', `Successfully removed container ${id} on cleanup.`);
-                    }
-                });
+        //Kill is probably extraneous at this point...
+        container.kill(() => {
+            container.remove((err) => {
+                if(err) {
+                    this.log('error', `Error removing container ${id} on cleanup.`);
+                } else {
+                    this.log('info', `Successfully removed container ${id} on cleanup.`);
+                }
             });
+        });
 
-            Utils.setContainerMyriadStateUnloaded(this.core, _.merge({
-                container_id: id, 
-                application_name: applicationName
-            }, !_.isUndefined(respawn) ? {respawn} : {}));
-        }
+        Utils.setContainerMyriadStateUnloaded(this.core, _.merge({
+            container_id: id,
+            application_name: applicationName
+        }, !_.isUndefined(respawn) ? {respawn} : {}));
     }
 
     trackContainer(container, id, applicationName, respawn) {
         this.containers[id] = container; 
 
-        container.wait(this.cleanupFnFor(container, id, applicationName, respawn));
+        container.wait(() => this.cleanupContainer(container, id, applicationName, respawn));
 
         container.attach({stream: true, stdout: true, stderr: true}, (err, stream) => {
             if(err) {
                 this.log('error', `Error attaching to tracked container ${id}: ${err}`);
             } else {
-                const logDir = _.join([this.core.options['base-log-dir'] || 'var/log/containership', 'applications', applicationName, id], '/');
+                const logDir =  `${this.core.options['base-log-dir']}/applications/${applicationName}/${id}`;
                 mkdirp(logDir, (err) => {
                     if(err) {
                         this.log('error', `Error creating log directory ${logDir}: ${err}`);
@@ -227,6 +223,12 @@ class DockerEngine extends Engine {
         const preStartMiddleware = _.mapValues(this.middleware.preStart, withOptions);
 
         const attrs = this.core.cluster.legiond.get_attributes(); 
+        const unloadContainer = () => {
+            Utils.setContainerMyriadStateUnloaded(this.core, {
+                container_id: options.id,
+                application_name: options.application_name
+            });
+        };
 
         async.parallel(prePullMiddleware, (err) => {
             if(err) {
@@ -236,16 +238,14 @@ class DockerEngine extends Engine {
                     host: attrs.id,
                     error: err
                 }); 
+                unloadContainer();
             } else {
                 const auths = options.auth || [{}];
                 this.pull(options.image, auths, (err) => {
                     if(err) {
                         this.log('warn', `Failed to pull ${options.image}`);
                         this.log('error', err.message);
-                        Utils.setContainerMyriadStateUnloaded(this.core, {
-                            container_id: options.id,
-                            application_name: options.application_name
-                        });
+                        unloadContainer();
                     } else {
                         options.start_args = this.startArgs;
 
@@ -253,14 +253,10 @@ class DockerEngine extends Engine {
                             if(err) {
                                 this.log('warn', 'Failed to execute pre-start middleware');
                                 this.log('error', err.message);
-
-                                Utils.setContainerMyriadStateUnloaded(this.core, {
-                                    container_id: options.id,
-                                    application_name: options.application_name
-                                }); 
+                                unloadContainer();
                             } else {
                                 const dockerOpts = DockerEngine.universalOptionsToDocker(options);
-                                this.log('info', `Creating docker container with with: ${JSON.stringify(dockerOpts)}`);
+                                this.log('verbose', `Creating docker container with with: ${JSON.stringify(dockerOpts)}`);
                                 docker.createContainer(dockerOpts, (err, container) => {
                                     if(!err) {
                                         container.start((err, data) => {
@@ -283,6 +279,7 @@ class DockerEngine extends Engine {
                                                 });
                                             } else {
                                                 this.log('error', `Error starting container ${err}.`);
+                                                unloadContainer();
                                             }
 
                                         });
@@ -325,7 +322,7 @@ class DockerEngine extends Engine {
 
                 //Make sure this is a cs managed container.
                 if(!name.match(/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/g)) {
-                    return;
+                    return fn();
                 }
 
                 const parts = name.split('-'); 
@@ -371,11 +368,12 @@ class DockerEngine extends Engine {
                                 var hostPort, containerPort;
 
                                 if(info.HostConfig.NetworkMode == 'bridge'){
-                                    _.each(info.HostConfig.PortBindings, function(bindings, binding){
+                                    _.each(info.HostConfig.PortBindings, function(bindings, binding) {
                                         hostPort = bindings[0].HostPort;
                                         binding = binding.split('/')[0];
-                                        if(binding != hostPort)
+                                        if(binding != hostPort) {
                                             containerPort = binding;
+                                        }
                                     });
                                 } else {
                                     _.each(info.Config.Env, function(envVar){
