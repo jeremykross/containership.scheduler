@@ -231,12 +231,6 @@ class DockerEngine extends Engine {
 
         async.parallel(prePullMiddleware, (err) => {
             if(err) {
-                this.core.cluster.legiond.send('container.unloaded', {
-                    id: options.id,
-                    application_name: options.application_name,
-                    host: attrs.id,
-                    error: err
-                }); 
                 unloadContainer();
             } else {
                 const auths = options.auth || [{}];
@@ -284,6 +278,7 @@ class DockerEngine extends Engine {
                                         });
                                     } else {
                                         this.log('error', `Error creating container ${err}.`);
+                                        unloadContainer();
                                     }
                                 });
                             }
@@ -299,11 +294,12 @@ class DockerEngine extends Engine {
         if(_.has(this.containers, options.container_id)) {
             this.containers[options.container_id].stop();
         } else {
-            this.log("error", "Stopped an untracked container.");
+            this.log('error', `Attempted to stop an untracked container ${options.container_id}.`);
         }
     }
 
-    reconcile() {
+    reconcile(callback) {
+        this.log('info', 'Started Reconciliation.');
         //List running containers.
         docker.listContainers({all: true}, (err, containersOnHost) => {
             containersOnHost = containersOnHost || [];
@@ -416,6 +412,9 @@ class DockerEngine extends Engine {
                 });
 
                 return fn();
+            }, () => {
+                this.log('info', 'Finished Reconciliation.');
+                if (callback) { callback(); }
             });
         });
     }
