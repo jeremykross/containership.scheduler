@@ -329,6 +329,8 @@ class DockerEngine extends Engine {
                             } else {
                                 this.log('error', `Error cleaning up dead ${applicationName} container: ${containerId}: ${err}`);
                             }
+
+                            return fn();
                         });
                       //There is a live container running on the host.
                     } else {
@@ -343,6 +345,8 @@ class DockerEngine extends Engine {
                                         } else {
                                             this.log('error', `Error cleaning up untracked ${applicationName} container: ${containerId}: ${err}`);
                                         }
+
+                                        return fn();
                                     });
                                 });
                               //There is a record,
@@ -392,6 +396,7 @@ class DockerEngine extends Engine {
                                             if(err) {
                                                 this.log('error', `Error setting myriad state during reconcile for ${containerId}: ${err}`);
                                             }
+                                            return fn();
                                         });
                                     } else {
                                         // It is not being tracked but belongs elsewhere anyway
@@ -402,6 +407,7 @@ class DockerEngine extends Engine {
                                             } else {
                                                 this.log('info', `Error stopping moved ${applicationName} on container ${containerId}.`);
                                             }
+                                            return fn();
                                         });
                                     }
                                 }
@@ -410,8 +416,6 @@ class DockerEngine extends Engine {
                         });
                     }
                 });
-
-                return fn();
             }, () => {
                 this.log('info', 'Finished Reconciliation.');
                 if (callback) { callback(); }
