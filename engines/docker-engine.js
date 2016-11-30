@@ -173,13 +173,15 @@ class DockerEngine extends Engine {
     }
 
     cleanupContainer(container, id, applicationName, respawn) {
-        delete this.containers[id];
+        if(_.has(this.containers, id)) {
+            delete this.containers[id];
+        }
 
         //Kill is probably extraneous at this point...
         container.kill(() => {
             container.remove((err) => {
                 if(err) {
-                    this.log('error', `Error removing container ${id} on cleanup.`);
+                    this.log('error', `Error removing container ${id} on cleanup: ${err}`);
                 } else {
                     this.log('info', `Successfully removed container ${id} on cleanup.`);
                 }
@@ -353,51 +355,56 @@ class DockerEngine extends Engine {
                             } else {
                                 containerConfig = JSON.parse(containerConfig);
 
+                                // A Helper fn to reconcile the myriad state with the running container.
+                                const alignMyriadWithContainer = (fn) => {
+
+                                    var hostPort, containerPort;
+
+                                    if(info.HostConfig.NetworkMode === 'bridge'){
+                                        _.each(info.HostConfig.PortBindings, function(bindings, binding) {
+                                            hostPort = bindings[0].HostPort;
+                                            binding = binding.split('/')[0];
+                                            if(binding != hostPort) {
+                                                containerPort = binding;
+                                            }
+                                        });
+                                    } else {
+                                        _.each(info.Config.Env, function(envVar){
+                                            if(envVar.indexOf('PORT=') == 0)
+                                                hostPort = envVar.split('=')[1];
+                                        });
+                                    }
+
+                                    const newConfig = _.merge(containerConfig, {
+                                        application_name: applicationName,
+                                        container_id: containerId,
+                                        status: 'loaded',
+                                        host: attrs.id,
+                                        start_time: new Date(info.Created).valueOf(),
+                                        host_port: hostPort,
+                                        container_port: containerPort,
+                                        engine: 'docker'
+                                    });
+
+                                    this.log('info', `Reconciled running ${applicationName} container ${containerId}`);
+
+                                    Utils.updateContainerMyriadState(this.core, newConfig, (err) => {
+                                        if(err) {
+                                            this.log('error', `Error setting myriad state during reconcile for ${containerId}: ${err}`);
+                                        }
+                                        return fn();
+                                    });
+
+                                }
+
                                 //it's not being tracked
                                 if(!_.has(this.containers, containerId)) {
                                     //Check that the container belongs on this host.
                                     if(containerConfig.host == attrs.id) {
                                         //Track it
                                         this.trackContainer(container, containerId, applicationName);
-
-                                        // and update the myriad state to reflect
-                                        // what's currently running.
-                                        var hostPort, containerPort;
-
-                                        if(info.HostConfig.NetworkMode === 'bridge'){
-                                            _.each(info.HostConfig.PortBindings, function(bindings, binding) {
-                                                hostPort = bindings[0].HostPort;
-                                                binding = binding.split('/')[0];
-                                                if(binding != hostPort) {
-                                                    containerPort = binding;
-                                                }
-                                            });
-                                        } else {
-                                            _.each(info.Config.Env, function(envVar){
-                                                if(envVar.indexOf('PORT=') == 0)
-                                                    hostPort = envVar.split('=')[1];
-                                            });
-                                        }
-
-                                        const newConfig = _.merge(containerConfig, {
-                                            application_name: applicationName,
-                                            container_id: containerId,
-                                            status: 'loaded',
-                                            host: attrs.id,
-                                            start_time: new Date(info.Created).valueOf(),
-                                            host_port: hostPort,
-                                            container_port: containerPort,
-                                            engine: 'docker'
-                                        });
-
-                                        this.log('info', `Reconciled running ${applicationName} container ${containerId}`);
-
-                                        Utils.updateContainerMyriadState(this.core, newConfig, (err) => {
-                                            if(err) {
-                                                this.log('error', `Error setting myriad state during reconcile for ${containerId}: ${err}`);
-                                            }
-                                            return fn();
-                                        });
+                                        //And then update it's state
+                                        return alignMyriadWithContainer(fn);
                                     } else {
                                         // It is not being tracked but belongs elsewhere anyway
                                         // so stop the local instance
@@ -410,6 +417,9 @@ class DockerEngine extends Engine {
                                             return fn();
                                         });
                                     }
+
+                                } else { //It is being tracked so update it's state and return
+                                    return alignMyriadWithContainer(fn);
                                 }
                             }
 
@@ -418,7 +428,7 @@ class DockerEngine extends Engine {
                 });
             }, () => {
                 this.log('info', 'Finished Reconciliation.');
-                if (callback) { callback(); }
+                if (_.isFunction(callback)) { callback(); }
             });
         });
     }
