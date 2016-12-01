@@ -360,8 +360,8 @@ class DockerEngine extends Engine {
 
                                     var hostPort, containerPort;
 
-                                    if(info.HostConfig.NetworkMode === 'bridge'){
-                                        _.each(info.HostConfig.PortBindings, function(bindings, binding) {
+                                    if(info.HostConfig.NetworkMode === 'bridge') {
+                                        _.each(info.HostConfig.PortBindings, (bindings, binding) => {
                                             hostPort = bindings[0].HostPort;
                                             binding = binding.split('/')[0];
                                             if(binding != hostPort) {
@@ -369,9 +369,10 @@ class DockerEngine extends Engine {
                                             }
                                         });
                                     } else {
-                                        _.each(info.Config.Env, function(envVar){
-                                            if(envVar.indexOf('PORT=') == 0)
+                                        _.each(info.Config.Env, (envVar) => {
+                                            if(envVar.indexOf('PORT=') === 0) {
                                                 hostPort = envVar.split('=')[1];
+                                            }
                                         });
                                     }
 
